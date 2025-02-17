@@ -210,7 +210,7 @@ def save_conversation(vector_store, messages: List[Dict], conversation_id: str):
 # Modified load_conversation function with fallback
 def load_conversation(vector_store, conversation_id: str = None) -> List[Dict]:
     try:
-        if conversation_id:
+        if (conversation_id):
             results = vector_store.similarity_search(
                 conversation_id,
                 k=1,
@@ -369,10 +369,8 @@ def chat_interface():
         st.divider()
         # Settings
         st.title("⚙️ Settings")
-        model = st.selectbox(
-            "Model",
-            ["google/gemini-2.0-flash-lite-preview-02-05:free", "google/gemini-2.0-flash-thinking-exp:free"]
-        )        
+        model = "google/gemini-2.0-flash-thinking-exp:free"
+        
         # Clear conversations button with custom styling
         st.markdown("""
             <style>
@@ -383,7 +381,7 @@ def chat_interface():
             }
             </style>
         """, unsafe_allow_html=True)
-        
+
         if st.button("🗑️ Clear All Conversations", use_container_width=True):
             clear_chat()
 
