@@ -77,6 +77,11 @@ st.markdown("""
         border-radius: 0.5rem;
         max-width: 80%;
         margin: 0.5rem 0;
+        transition: all 0.3s ease;
+        opacity: 1;
+    }
+    .chat-message.fade-in {
+        opacity: 0;
     }
     .chat-message.user {
         background-color: #2b2d31;
@@ -146,24 +151,9 @@ st.markdown("""
     }
     /* Custom spinner */
     .stSpinner > div {
-        visibility: hidden;  /* Hide default spinner */
+        visibility: visible !important;  /* Show default spinner */
     }
     
-    .thinking-spinner {
-        position: fixed;
-        bottom: 80px;
-        left: 20px;  /* Align with assistant messages */
-        transform: none;
-        background-color: #444654;
-        padding: 8px 16px;
-        border-radius: 20px;
-        z-index: 1000;
-        color: white;
-        display: flex;
-        align-items: center;
-        gap: 8px;
-    }
-
     /* Prevent Streamlit fade effect */
     .stApp {
         opacity: 1 !important;
@@ -174,7 +164,17 @@ st.markdown("""
     }
     
     div[data-testid="stStatusWidget"] {
-        display: none !important;
+        display: block !important;
+    }
+    
+    /* Spinner styling */
+    div[data-testid="stSpinner"] {
+        padding: 10px;
+        background-color: #444654;
+        border-radius: 10px;
+        margin: 10px 0;
+        display: inline-flex;
+        align-items: center;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -308,30 +308,31 @@ def load_all_conversations(vector_store):
     return conversations
 
 def clear_chat():
-    try:
-        # Clear AstraDB collection
-        vector_store = setup_astradb()
-        if vector_store:
-            vector_store.delete_collection()
-            vector_store = setup_astradb()  # Recreate collection
+    with st.spinner("Clearing all conversations..."):
+        try:
+            vector_store = setup_astradb()
+            if vector_store:
+                vector_store.delete_collection()
+                vector_store = setup_astradb()
+                
+            for file in os.listdir(LOCAL_STORAGE_PATH):
+                file_path = os.path.join(LOCAL_STORAGE_PATH, file)
+                try:
+                    os.remove(file_path)
+                except Exception as e:
+                    logger.error(f"Failed to delete {file_path}: {str(e)}")
+                    
+            st.session_state.messages = []
+            st.session_state.current_chat_id = str(uuid.uuid4())
+            st.session_state.chat_titles = {}
+            st.session_state.loaded_chats = {}
+            time.sleep(0.5)  # Short delay for visual feedback
             
-        # Clear local storage
-        for file in os.listdir(LOCAL_STORAGE_PATH):
-            file_path = os.path.join(LOCAL_STORAGE_PATH, file)
-            try:
-                os.remove(file_path)
-            except Exception as e:
-                logger.error(f"Failed to delete {file_path}: {str(e)}")
-    except Exception as e:
-        logger.error(f"Failed to clear AstraDB collection: {str(e)}")
-    
-    # Reset state
-    st.session_state.messages = []
-    st.session_state.current_chat_id = str(uuid.uuid4())
-    st.session_state.chat_titles = {}
-    st.session_state.loaded_chats = {}
-    
-    # Force a rerun to update the UI
+        except Exception as e:
+            logger.error(f"Failed to clear conversations: {str(e)}")
+            st.error("Failed to clear some conversations")
+            return
+            
     st.rerun()
 
 def create_new_chat():
@@ -461,69 +462,66 @@ def chat_interface():
         }
         st.session_state.messages.append(user_message)
         
-        # Display all messages including the new user message
-        with message_container:
-            for message in st.session_state.messages:
-                message_content = get_message_content(message)
-                avatar = "👤" if message['role'] == 'user' else "🤖"
-                st.markdown(f"""
-                <div class="chat-message {message['role']}">
-                    <div class="avatar">{avatar}</div>
-                    <div class="message-content">{message_content}</div>
-                </div>
-                """, unsafe_allow_html=True)
-
-        # Update chat title if first message
-        if len(st.session_state.messages) == 1:
-            st.session_state.chat_titles[st.session_state.current_chat_id] = get_chat_title([user_message])
-
-        # Show thinking spinner in a fixed position
-        with spinner_container:
-            st.markdown("""
-            <div class="thinking-spinner">
-                <div>🤖</div>
-                <div>Thinking...</div>
+        # Display user message instantly
+        with main_container:
+            st.markdown(f"""
+            <div class="chat-message user">
+                <div class="avatar">👤</div>
+                <div class="message-content">{prompt}</div>
             </div>
             """, unsafe_allow_html=True)
-
-        # Format messages and get response
-        api_messages = [format_message_for_api(msg) for msg in st.session_state.messages]
         
-        # Get response and stream it
-        response = client.chat.completions.create(
-            model=model,
-            messages=api_messages,
-            stream=True,
-            extra_headers={
-                "HTTP-Referer": "https://your-site.com",
-                "X-Title": "AI Chat Assistant"
-            }
-        )
+        # Use Streamlit's built-in spinner
+        with st.spinner('Thinking...'):
+            # Format messages and get response
+            api_messages = [format_message_for_api(msg) for msg in st.session_state.messages]
+            
+            # Get response and stream it
+            response = client.chat.completions.create(
+                model=model,
+                messages=api_messages,
+                stream=True,
+                extra_headers={
+                    "HTTP-Referer": "https://your-site.com",
+                    "X-Title": "AI Chat Assistant"
+                }
+            )
 
-        # Stream the response
-        full_response = ""
-        with response_container:
+            # Stream the response
+            full_response = ""
+            message_placeholder = st.empty()
+            
             for chunk in response:
                 if chunk.choices[0].delta.content:
-                    full_response += chunk.choices[0].delta.content
-                    st.markdown(f"""
+                    new_content = chunk.choices[0].delta.content
+                    full_response += new_content
+                    message_placeholder.markdown(f"""
                     <div class="chat-message assistant">
                         <div class="avatar">🤖</div>
                         <div class="message-content">{full_response}</div>
                     </div>
                     """, unsafe_allow_html=True)
 
-        # Clear the spinner after response is complete
-        spinner_container.empty()
+        # Display final message without cursor
+        message_placeholder.markdown(f"""
+        <div class="chat-message assistant">
+            <div class="avatar">🤖</div>
+            <div class="message-content">{full_response}</div>
+        </div>
+        """, unsafe_allow_html=True)
 
-        # Add assistant message to state and save
+        # Update state and save
         assistant_message = {
             "role": "assistant",
             "content": [{"type": "text", "text": full_response}]
         }
         st.session_state.messages.append(assistant_message)
 
-        # Update loaded chats and save to DB
+        # Update chat title if first message
+        if len(st.session_state.messages) == 2:  # After first response
+            st.session_state.chat_titles[st.session_state.current_chat_id] = get_chat_title([user_message])
+
+        # Save conversation
         st.session_state.loaded_chats[st.session_state.current_chat_id] = {
             "messages": st.session_state.messages,
             "timestamp": datetime.now(timezone.utc).isoformat(),
