@@ -164,28 +164,6 @@ st.markdown("""
         gap: 8px;
     }
 
-    /* Custom spinners */
-    .sidebar-spinner {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        padding: 8px;
-        background-color: #444654;
-        border-radius: 4px;
-        margin: 8px 0;
-    }
-    
-    .message-spinner {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        padding: 8px 16px;
-        background-color: #444654;
-        border-radius: 20px;
-        margin: 8px 0;
-        color: white;
-    }
-
     /* Prevent Streamlit fade effect */
     .stApp {
         opacity: 1 !important;
@@ -197,28 +175,6 @@ st.markdown("""
     
     div[data-testid="stStatusWidget"] {
         display: none !important;
-    }
-    
-    .cursor-effect {
-        animation: blink 1s infinite;
-    }
-    
-    @keyframes blink {
-        0% { opacity: 1; }
-        50% { opacity: 0; }
-        100% { opacity: 1; }
-    }
-    
-    .message-typing {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        padding: 8px 16px;
-        background-color: #444654;
-        border-radius: 20px;
-        margin: 8px 0;
-        color: white;
-        max-width: fit-content;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -352,41 +308,31 @@ def load_all_conversations(vector_store):
     return conversations
 
 def clear_chat():
-    # Show loading state in sidebar
-    with st.sidebar:
-        with st.spinner():
-            st.markdown("""
-                <div class="sidebar-spinner">
-                    <div>🗑️</div>
-                    <div>Clearing conversations...</div>
-                </div>
-            """, unsafe_allow_html=True)
+    try:
+        # Clear AstraDB collection
+        vector_store = setup_astradb()
+        if vector_store:
+            vector_store.delete_collection()
+            vector_store = setup_astradb()  # Recreate collection
             
+        # Clear local storage
+        for file in os.listdir(LOCAL_STORAGE_PATH):
+            file_path = os.path.join(LOCAL_STORAGE_PATH, file)
             try:
-                # Clear AstraDB collection
-                vector_store = setup_astradb()
-                if vector_store:
-                    vector_store.delete_collection()
-                    vector_store = setup_astradb()  # Recreate collection
-                    
-                # Clear local storage
-                for file in os.listdir(LOCAL_STORAGE_PATH):
-                    file_path = os.path.join(LOCAL_STORAGE_PATH, file)
-                    try:
-                        os.remove(file_path)
-                    except Exception as e:
-                        logger.error(f"Failed to delete {file_path}: {str(e)}")
+                os.remove(file_path)
             except Exception as e:
-                logger.error(f"Failed to clear AstraDB collection: {str(e)}")
-            
-            # Reset state
-            st.session_state.messages = []
-            st.session_state.current_chat_id = str(uuid.uuid4())
-            st.session_state.chat_titles = {}
-            st.session_state.loaded_chats = {}
-            
-            time.sleep(1)  # Show spinner for at least 1 second
-            st.rerun()
+                logger.error(f"Failed to delete {file_path}: {str(e)}")
+    except Exception as e:
+        logger.error(f"Failed to clear AstraDB collection: {str(e)}")
+    
+    # Reset state
+    st.session_state.messages = []
+    st.session_state.current_chat_id = str(uuid.uuid4())
+    st.session_state.chat_titles = {}
+    st.session_state.loaded_chats = {}
+    
+    # Force a rerun to update the UI
+    st.rerun()
 
 def create_new_chat():
     st.session_state.messages = []
@@ -515,23 +461,31 @@ def chat_interface():
         }
         st.session_state.messages.append(user_message)
         
-        # Display user message instantly
-        with main_container:
-            st.markdown(f"""
-            <div class="chat-message user">
-                <div class="avatar">👤</div>
-                <div class="message-content">{prompt}</div>
-            </div>
-            """, unsafe_allow_html=True)
-            
-            # Show typing indicator
-            st.markdown(f"""
-            <div class="message-typing">
+        # Display all messages including the new user message
+        with message_container:
+            for message in st.session_state.messages:
+                message_content = get_message_content(message)
+                avatar = "👤" if message['role'] == 'user' else "🤖"
+                st.markdown(f"""
+                <div class="chat-message {message['role']}">
+                    <div class="avatar">{avatar}</div>
+                    <div class="message-content">{message_content}</div>
+                </div>
+                """, unsafe_allow_html=True)
+
+        # Update chat title if first message
+        if len(st.session_state.messages) == 1:
+            st.session_state.chat_titles[st.session_state.current_chat_id] = get_chat_title([user_message])
+
+        # Show thinking spinner in a fixed position
+        with spinner_container:
+            st.markdown("""
+            <div class="thinking-spinner">
                 <div>🤖</div>
-                <div>Bot is typing<span class="cursor-effect">▌</span></div>
+                <div>Thinking...</div>
             </div>
             """, unsafe_allow_html=True)
-        
+
         # Format messages and get response
         api_messages = [format_message_for_api(msg) for msg in st.session_state.messages]
         
@@ -546,43 +500,30 @@ def chat_interface():
             }
         )
 
-        # Stream the response with cursor effect
+        # Stream the response
         full_response = ""
-        message_placeholder = st.empty()
-        
-        for chunk in response:
-            if chunk.choices[0].delta.content:
-                new_content = chunk.choices[0].delta.content
-                for char in new_content:
-                    full_response += char
-                    message_placeholder.markdown(f"""
+        with response_container:
+            for chunk in response:
+                if chunk.choices[0].delta.content:
+                    full_response += chunk.choices[0].delta.content
+                    st.markdown(f"""
                     <div class="chat-message assistant">
                         <div class="avatar">🤖</div>
-                        <div class="message-content">{full_response}<span class="cursor-effect">▌</span></div>
+                        <div class="message-content">{full_response}</div>
                     </div>
                     """, unsafe_allow_html=True)
-                    time.sleep(0.01)  # Smooth typing effect
 
-        # Display final message without cursor
-        message_placeholder.markdown(f"""
-        <div class="chat-message assistant">
-            <div class="avatar">🤖</div>
-            <div class="message-content">{full_response}</div>
-        </div>
-        """, unsafe_allow_html=True)
+        # Clear the spinner after response is complete
+        spinner_container.empty()
 
-        # Update state and save
+        # Add assistant message to state and save
         assistant_message = {
             "role": "assistant",
             "content": [{"type": "text", "text": full_response}]
         }
         st.session_state.messages.append(assistant_message)
 
-        # Update chat title if first message
-        if len(st.session_state.messages) == 2:  # After first response
-            st.session_state.chat_titles[st.session_state.current_chat_id] = get_chat_title([user_message])
-
-        # Save conversation
+        # Update loaded chats and save to DB
         st.session_state.loaded_chats[st.session_state.current_chat_id] = {
             "messages": st.session_state.messages,
             "timestamp": datetime.now(timezone.utc).isoformat(),
