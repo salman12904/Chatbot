@@ -54,18 +54,6 @@ ASTRA_DB_REGION = st.secrets["ASTRA_DB_REGION"]
 ASTRA_DB_TOKEN = st.secrets["ASTRA_DB_TOKEN"]
 ASTRA_DB_KEYSPACE = st.secrets["ASTRA_DB_KEYSPACE"]
 
-# Add system prompt configuration
-SYSTEM_PROMPT = """You are a helpful and knowledgeable AI assistant. Your responses should be:
-- Clear and concise
-- Professional yet friendly
-- Well-structured with bullet points or numbering when appropriate
-- Include relevant examples when helpful
-Please avoid:
-- Speculative or uncertain information
-- Overly casual language
-- Lengthy preambles
-"""
-
 # Initialize OpenAI client
 client = OpenAI(
     base_url="https://openrouter.ai/api/v1",
@@ -205,14 +193,6 @@ def format_message_for_api(message):
             "content": [{"type": "text", "text": message['content']}]
         }
     return message
-
-# Add a function to prepare messages with system prompt
-def prepare_messages_with_system_prompt(messages):
-    system_message = {
-        "role": "system",
-        "content": [{"type": "text", "text": SYSTEM_PROMPT}]
-    }
-    return [system_message] + [format_message_for_api(msg) for msg in messages]
 
 # AstraDB setup
 def setup_astradb():
@@ -493,7 +473,7 @@ def chat_interface():
         try:
             # Show thinking spinner and get response
             with st.spinner('Thinking...'):
-                api_messages = prepare_messages_with_system_prompt(st.session_state.messages)
+                api_messages = [format_message_for_api(msg) for msg in st.session_state.messages]
                 response = client.chat.completions.create(
                     model=model,
                     messages=api_messages,
