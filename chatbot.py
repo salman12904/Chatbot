@@ -183,6 +183,19 @@ st.markdown("""
         display: inline-flex;
         align-items: center;
     }
+    
+    /* Updated spinner styling */
+    .chat-message .stSpinner {
+        display: inline-flex;
+        margin-left: 10px;
+        padding: 0;
+        background-color: transparent;
+    }
+    
+    .chat-message .stSpinner > div {
+        width: 20px;
+        height: 20px;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -478,13 +491,18 @@ def chat_interface():
                     *[format_message_for_api(msg) for msg in st.session_state.messages]
                 ]
 
-                # Create assistant message container
+                # Create assistant message container with spinner
                 assistant_response = st.chat_message("assistant")
-                response_placeholder = assistant_response.empty()
+                with assistant_response:
+                    cols = st.columns([0.05, 0.95])
+                    with cols[0]:
+                        spinner = st.spinner("")
+                    with cols[1]:
+                        response_placeholder = st.empty()
                 
                 # Stream the response
                 full_response = ""
-                with st.spinner('Thinking...'):
+                with spinner:
                     response = client.chat.completions.create(
                         model="google/gemini-2.0-flash-thinking-exp:free",
                         messages=api_messages,
