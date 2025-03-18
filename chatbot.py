@@ -29,14 +29,7 @@ st.set_page_config(
 )
 
 # Add this after the API keys configuration
-SYSTEM_PROMPT = """You are a helpful and knowledgeable AI assistant. 
-Your responses should be:
-- Clear and concise
-- Well-structured with appropriate formatting
-- Professional yet friendly
-- Accurate and well-researched
-When providing code examples, use proper syntax highlighting and explanations.
-"""
+SYSTEM_PROMPT = """You are a helpful and knowledgeable AI assistant. STRICTLY DO NOT USE EMOJIS."""
 
 # Initialize session state variables
 if "messages" not in st.session_state:
