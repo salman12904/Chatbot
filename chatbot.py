@@ -190,6 +190,25 @@ st.markdown("""
         display: inline-flex;
         align-items: center;
     }
+    
+    .loading-dots {
+        display: inline-block;
+        animation: loading 1.4s infinite both;
+    }
+    @keyframes loading {
+        0% { content: "."; }
+        33% { content: ".."; }
+        66% { content: "..."; }
+    }
+    .thinking-bubble {
+        background-color: #444654;
+        padding: 1rem;
+        border-radius: 0.5rem;
+        margin: 0.5rem 0;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -473,10 +492,19 @@ def chat_interface():
                 <div class="message-content">{message_content}</div>
             </div>
             """, unsafe_allow_html=True)
+            
+        # Show thinking indicator if waiting for response
+        if st.session_state.waiting_for_response:
+            st.markdown(f"""
+            <div class="thinking-bubble">
+                <div class="avatar">🤖</div>
+                <div class="loading-dots">Thinking</div>
+            </div>
+            """, unsafe_allow_html=True)
         st.markdown('</div>', unsafe_allow_html=True)
 
     # Single chat input handling with unique key
-    if prompt := st.chat_input("Type your message here...", key="main_chat_input"):
+    if prompt := st.chat_input("Type your message here...", key="main_chat_input", disabled=st.session_state.waiting_for_response):
         if not st.session_state.waiting_for_response:
             # Add user message to state
             user_message = {
