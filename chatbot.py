@@ -58,6 +58,8 @@ if "page_refreshed" not in st.session_state:
     st.session_state.chat_titles = {}
     st.session_state.current_chat_id = str(uuid.uuid4())
     st.session_state.conversation_id = str(uuid.uuid4())
+if "waiting_for_response" not in st.session_state:
+    st.session_state.waiting_for_response = False
 
 # Configurations and API keys
 OPENROUTER_API_KEY = st.secrets["OPENROUTER_API_KEY"]
@@ -475,18 +477,18 @@ def chat_interface():
 
     # Single chat input handling with unique key
     if prompt := st.chat_input("Type your message here...", key="main_chat_input"):
-        # Add user message to state and display immediately
-        user_message = {
-            "role": "user",
-            "content": [{"type": "text", "text": prompt}]
-        }
-        st.session_state.messages.append(user_message)
-        
-        # Rerun to display user message instantly
-        st.rerun()
+        if not st.session_state.waiting_for_response:
+            # Add user message to state
+            user_message = {
+                "role": "user",
+                "content": [{"type": "text", "text": prompt}]
+            }
+            st.session_state.messages.append(user_message)
+            st.session_state.waiting_for_response = True
+            st.rerun()
 
     # Handle bot response after rerun with user message
-    if st.session_state.messages and st.session_state.messages[-1]['role'] == 'user':
+    if st.session_state.waiting_for_response and st.session_state.messages and st.session_state.messages[-1]['role'] == 'user':
         try:
             # Create placeholder for bot response
             with st.spinner('Thinking...'):
@@ -541,15 +543,15 @@ def chat_interface():
                 }
                 save_conversation(vector_store, st.session_state.messages, st.session_state.current_chat_id)
 
-                # Rerun to update the full chat history
-                st.rerun()
+                # Reset waiting state
+                st.session_state.waiting_for_response = False
 
         except Exception as e:
             logger.error(f"Error generating response: {str(e)}")
             st.error("Failed to generate response. Please try again.")
-            # Remove failed user message
+            # Remove failed user message and reset waiting state
             st.session_state.messages.pop()
-            st.rerun()
+            st.session_state.waiting_for_response = False
 
     st.markdown('<div class="input-container">', unsafe_allow_html=True)
     st.markdown('</div>', unsafe_allow_html=True)
