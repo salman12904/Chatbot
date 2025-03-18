@@ -28,9 +28,21 @@ st.set_page_config(
     layout="wide"
 )
 
+# Add this after the API keys configuration
+SYSTEM_PROMPT = """You are a helpful and knowledgeable AI assistant. 
+Your responses should be:
+- Clear and concise
+- Well-structured with appropriate formatting
+- Professional yet friendly
+- Accurate and well-researched
+When providing code examples, use proper syntax highlighting and explanations.
+"""
+
 # Initialize session state variables
 if "messages" not in st.session_state:
     st.session_state.messages = []
+if "system_prompt" not in st.session_state:
+    st.session_state.system_prompt = SYSTEM_PROMPT
 if "conversation_id" not in st.session_state:
     st.session_state.conversation_id = str(uuid.uuid4())
 if "current_chat_id" not in st.session_state:
@@ -406,6 +418,19 @@ def chat_interface():
         st.title("⚙️ Settings")
         model = "google/gemini-2.0-flash-thinking-exp:free"
         
+        # Add this in the sidebar settings section, before the clear conversations button
+        st.title("🎯 Assistant Settings")
+        with st.expander("Customize Assistant Behavior"):
+            new_system_prompt = st.text_area(
+                "System Instructions",
+                value=st.session_state.system_prompt,
+                height=200,
+                help="These instructions control how the AI assistant behaves and responds"
+            )
+            if st.button("Update Instructions"):
+                st.session_state.system_prompt = new_system_prompt
+                st.success("Assistant instructions updated!")
+
         # Clear conversations button with custom styling
         st.markdown("""
             <style>
@@ -455,25 +480,23 @@ def chat_interface():
         message_container = st.empty()
         response_container = st.empty()
 
-        # Show user message immediately
-        user_message = {
-            "role": "user",
-            "content": [{"type": "text", "text": prompt}]
-        }
-        st.session_state.messages.append(user_message)
-        
-        with chat_container:
-            st.markdown(f"""
-            <div class="chat-message user">
-                <div class="avatar">👤</div>
-                <div class="message-content">{prompt}</div>
-            </div>
-            """, unsafe_allow_html=True)
-        
         try:
             # Show thinking spinner and get response
             with st.spinner('Thinking...'):
-                api_messages = [format_message_for_api(msg) for msg in st.session_state.messages]
+                # Add system prompt to messages
+                api_messages = [
+                    {"role": "system", "content": st.session_state.system_prompt},
+                    *[format_message_for_api(msg) for msg in st.session_state.messages]
+                ]
+                
+                # Add the new user message
+                user_message = {
+                    "role": "user",
+                    "content": [{"type": "text", "text": prompt}]
+                }
+                st.session_state.messages.append(user_message)
+                api_messages.append(format_message_for_api(user_message))
+
                 response = client.chat.completions.create(
                     model=model,
                     messages=api_messages,
