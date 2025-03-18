@@ -190,25 +190,6 @@ st.markdown("""
         display: inline-flex;
         align-items: center;
     }
-    
-    .loading-dots {
-        display: inline-block;
-        animation: loading 1.4s infinite both;
-    }
-    @keyframes loading {
-        0% { content: "."; }
-        33% { content: ".."; }
-        66% { content: "..."; }
-    }
-    .thinking-bubble {
-        background-color: #444654;
-        padding: 1rem;
-        border-radius: 0.5rem;
-        margin: 0.5rem 0;
-        display: flex;
-        align-items: center;
-        gap: 10px;
-    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -400,11 +381,10 @@ def chat_interface():
     if not st.session_state.loaded_chats:
         st.session_state.loaded_chats = load_all_conversations(vector_store)
     
-    # Always start with a new chat when the app loads
     if not st.session_state.messages:
         create_new_chat()
 
-    # Enhanced sidebar with chat history
+    # Sidebar and layout setup remains the same
     with st.sidebar:
         st.title("💬 Chat History")
         
@@ -468,7 +448,7 @@ def chat_interface():
 
     st.title("AI Chat Assistant")
     
-    # Display welcome message if no messages
+    # Welcome message for empty chat
     if not st.session_state.messages:
         st.markdown("""
         <div style="text-align: center; margin-top: 50px;">
@@ -477,81 +457,56 @@ def chat_interface():
         </div>
         """, unsafe_allow_html=True)
     
-    # Main chat container and message area
+    # Message display container
     chat_container = st.container()
-
-    # Display existing messages
     with chat_container:
         st.markdown('<div class="main-container">', unsafe_allow_html=True)
         for message in st.session_state.messages:
-            message_content = get_message_content(message)
-            avatar = "👤" if message['role'] == 'user' else "🤖"
-            st.markdown(f"""
-            <div class="chat-message {message['role']}">
-                <div class="avatar">{avatar}</div>
-                <div class="message-content">{message_content}</div>
-            </div>
-            """, unsafe_allow_html=True)
-            
-        # Show thinking indicator if waiting for response
-        if st.session_state.waiting_for_response:
-            st.markdown(f"""
-            <div class="thinking-bubble">
-                <div class="avatar">🤖</div>
-                <div class="loading-dots">Thinking</div>
-            </div>
-            """, unsafe_allow_html=True)
+            with st.chat_message(message["role"]):
+                st.write(get_message_content(message))
         st.markdown('</div>', unsafe_allow_html=True)
 
-    # Single chat input handling with unique key
-    if prompt := st.chat_input("Type your message here...", key="main_chat_input", disabled=st.session_state.waiting_for_response):
+    # Chat input and response handling
+    if prompt := st.chat_input("Type your message here...", key="chat_input"):
         if not st.session_state.waiting_for_response:
-            # Add user message to state
+            # Add user message
+            st.chat_message("user").write(prompt)
             user_message = {
                 "role": "user",
                 "content": [{"type": "text", "text": prompt}]
             }
             st.session_state.messages.append(user_message)
             st.session_state.waiting_for_response = True
-            st.rerun()
 
-    # Handle bot response after rerun with user message
-    if st.session_state.waiting_for_response and st.session_state.messages and st.session_state.messages[-1]['role'] == 'user':
-        try:
-            # Create placeholder for bot response
-            with st.spinner('Thinking...'):
-                # Prepare messages with system prompt
+            try:
+                # Prepare messages for API
                 api_messages = [
                     {"role": "system", "content": st.session_state.system_prompt},
                     *[format_message_for_api(msg) for msg in st.session_state.messages]
                 ]
-                
-                # Get bot response
-                response = client.chat.completions.create(
-                    model=model,
-                    messages=api_messages,
-                    stream=True,
-                    extra_headers={
-                        "HTTP-Referer": "https://your-site.com",
-                        "X-Title": "AI Chat Assistant"
-                    }
-                )
 
+                # Create assistant message container
+                assistant_response = st.chat_message("assistant")
+                response_placeholder = assistant_response.empty()
+                
                 # Stream the response
                 full_response = ""
-                placeholder = st.empty()
-                
-                for chunk in response:
-                    if chunk.choices[0].delta.content:
-                        new_content = chunk.choices[0].delta.content
-                        full_response += new_content
-                        placeholder.markdown(f"""
-                        <div class="chat-message assistant">
-                            <div class="avatar">🤖</div>
-                            <div class="message-content">{full_response}</div>
-                        </div>
-                        """, unsafe_allow_html=True)
+                with st.spinner('Thinking...'):
+                    response = client.chat.completions.create(
+                        model="google/gemini-2.0-flash-thinking-exp:free",
+                        messages=api_messages,
+                        stream=True,
+                        extra_headers={
+                            "HTTP-Referer": "https://your-site.com",
+                            "X-Title": "AI Chat Assistant"
+                        }
+                    )
 
+                    for chunk in response:
+                        if chunk.choices[0].delta.content:
+                            full_response += chunk.choices[0].delta.content
+                            response_placeholder.markdown(full_response)
+                
                 # Save assistant response
                 assistant_message = {
                     "role": "assistant",
@@ -571,15 +526,13 @@ def chat_interface():
                 }
                 save_conversation(vector_store, st.session_state.messages, st.session_state.current_chat_id)
 
-                # Reset waiting state
+            except Exception as e:
+                logger.error(f"Error generating response: {str(e)}")
+                st.error("Failed to generate response. Please try again.")
+                st.session_state.messages.pop()  # Remove failed user message
+            
+            finally:
                 st.session_state.waiting_for_response = False
-
-        except Exception as e:
-            logger.error(f"Error generating response: {str(e)}")
-            st.error("Failed to generate response. Please try again.")
-            # Remove failed user message and reset waiting state
-            st.session_state.messages.pop()
-            st.session_state.waiting_for_response = False
 
     st.markdown('<div class="input-container">', unsafe_allow_html=True)
     st.markdown('</div>', unsafe_allow_html=True)
