@@ -458,7 +458,6 @@ def chat_interface():
     
     # Main chat container and message area
     chat_container = st.container()
-    message_area = st.container()
 
     # Display existing messages
     with chat_container:
@@ -476,27 +475,28 @@ def chat_interface():
 
     # Single chat input handling with unique key
     if prompt := st.chat_input("Type your message here...", key="main_chat_input"):
-        # Create message containers
-        message_container = st.empty()
-        response_container = st.empty()
+        # Add user message to state and display immediately
+        user_message = {
+            "role": "user",
+            "content": [{"type": "text", "text": prompt}]
+        }
+        st.session_state.messages.append(user_message)
+        
+        # Rerun to display user message instantly
+        st.rerun()
 
+    # Handle bot response after rerun with user message
+    if st.session_state.messages and st.session_state.messages[-1]['role'] == 'user':
         try:
-            # Show thinking spinner and get response
+            # Create placeholder for bot response
             with st.spinner('Thinking...'):
-                # Add system prompt to messages
+                # Prepare messages with system prompt
                 api_messages = [
                     {"role": "system", "content": st.session_state.system_prompt},
                     *[format_message_for_api(msg) for msg in st.session_state.messages]
                 ]
                 
-                # Add the new user message
-                user_message = {
-                    "role": "user",
-                    "content": [{"type": "text", "text": prompt}]
-                }
-                st.session_state.messages.append(user_message)
-                api_messages.append(format_message_for_api(user_message))
-
+                # Get bot response
                 response = client.chat.completions.create(
                     model=model,
                     messages=api_messages,
@@ -509,41 +509,47 @@ def chat_interface():
 
                 # Stream the response
                 full_response = ""
-                message_placeholder = st.empty()
+                placeholder = st.empty()
                 
                 for chunk in response:
                     if chunk.choices[0].delta.content:
                         new_content = chunk.choices[0].delta.content
                         full_response += new_content
-                        message_placeholder.markdown(f"""
+                        placeholder.markdown(f"""
                         <div class="chat-message assistant">
                             <div class="avatar">🤖</div>
                             <div class="message-content">{full_response}</div>
                         </div>
                         """, unsafe_allow_html=True)
 
-            # Save assistant response
-            assistant_message = {
-                "role": "assistant",
-                "content": [{"type": "text", "text": full_response}]
-            }
-            st.session_state.messages.append(assistant_message)
+                # Save assistant response
+                assistant_message = {
+                    "role": "assistant",
+                    "content": [{"type": "text", "text": full_response}]
+                }
+                st.session_state.messages.append(assistant_message)
 
-            # Update chat title if first message
-            if len(st.session_state.messages) == 2:
-                st.session_state.chat_titles[st.session_state.current_chat_id] = get_chat_title([user_message])
+                # Update chat title if first message
+                if len(st.session_state.messages) == 2:
+                    st.session_state.chat_titles[st.session_state.current_chat_id] = get_chat_title([user_message])
 
-            # Save conversation
-            st.session_state.loaded_chats[st.session_state.current_chat_id] = {
-                "messages": st.session_state.messages,
-                "timestamp": datetime.now(timezone.utc).isoformat(),
-                "title": st.session_state.chat_titles[st.session_state.current_chat_id]
-            }
-            save_conversation(vector_store, st.session_state.messages, st.session_state.current_chat_id)
+                # Save conversation
+                st.session_state.loaded_chats[st.session_state.current_chat_id] = {
+                    "messages": st.session_state.messages,
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                    "title": st.session_state.chat_titles[st.session_state.current_chat_id]
+                }
+                save_conversation(vector_store, st.session_state.messages, st.session_state.current_chat_id)
+
+                # Rerun to update the full chat history
+                st.rerun()
 
         except Exception as e:
             logger.error(f"Error generating response: {str(e)}")
             st.error("Failed to generate response. Please try again.")
+            # Remove failed user message
+            st.session_state.messages.pop()
+            st.rerun()
 
     st.markdown('<div class="input-container">', unsafe_allow_html=True)
     st.markdown('</div>', unsafe_allow_html=True)
