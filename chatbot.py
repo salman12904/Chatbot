@@ -431,9 +431,12 @@ def chat_interface():
         </div>
         """, unsafe_allow_html=True)
     
-    # Create a container for the main chat area
-    main_container = st.container()
-    with main_container:
+    # Main chat container and message area
+    chat_container = st.container()
+    message_area = st.container()
+
+    # Display existing messages
+    with chat_container:
         st.markdown('<div class="main-container">', unsafe_allow_html=True)
         for message in st.session_state.messages:
             message_content = get_message_content(message)
@@ -446,7 +449,86 @@ def chat_interface():
             """, unsafe_allow_html=True)
         st.markdown('</div>', unsafe_allow_html=True)
 
-    # Create a container for the input area
+    # Input handling
+    if prompt := st.chat_input("Type your message here..."):
+        # Clear previous message area
+        message_area.empty()
+        
+        # Show user message
+        with chat_container:
+            st.markdown(f"""
+            <div class="chat-message user">
+                <div class="avatar">👤</div>
+                <div class="message-content">{prompt}</div>
+            </div>
+            """, unsafe_allow_html=True)
+        
+        # Create placeholders for response
+        thinking_placeholder = message_area.empty()
+        response_placeholder = message_area.empty()
+        
+        # Show thinking spinner
+        with thinking_placeholder:
+            with st.spinner('Thinking...'):
+                # Prepare messages
+                user_message = {
+                    "role": "user",
+                    "content": [{"type": "text", "text": prompt}]
+                }
+                st.session_state.messages.append(user_message)
+                api_messages = [format_message_for_api(msg) for msg in st.session_state.messages]
+                
+                try:
+                    # Get streamed response
+                    response = client.chat.completions.create(
+                        model=model,
+                        messages=api_messages,
+                        stream=True,
+                        extra_headers={
+                            "HTTP-Referer": "https://your-site.com",
+                            "X-Title": "AI Chat Assistant"
+                        }
+                    )
+
+                    # Stream response
+                    full_response = ""
+                    with response_placeholder:
+                        for chunk in response:
+                            if chunk.choices[0].delta.content:
+                                full_response += chunk.choices[0].delta.content
+                                st.markdown(f"""
+                                <div class="chat-message assistant">
+                                    <div class="avatar">🤖</div>
+                                    <div class="message-content">{full_response}</div>
+                                </div>
+                                """, unsafe_allow_html=True)
+
+                    # Save assistant response
+                    assistant_message = {
+                        "role": "assistant",
+                        "content": [{"type": "text", "text": full_response}]
+                    }
+                    st.session_state.messages.append(assistant_message)
+
+                    # Update chat title if first message
+                    if len(st.session_state.messages) == 2:
+                        st.session_state.chat_titles[st.session_state.current_chat_id] = get_chat_title([user_message])
+
+                    # Save conversation
+                    st.session_state.loaded_chats[st.session_state.current_chat_id] = {
+                        "messages": st.session_state.messages,
+                        "timestamp": datetime.now(timezone.utc).isoformat(),
+                        "title": st.session_state.chat_titles[st.session_state.current_chat_id]
+                    }
+                    save_conversation(vector_store, st.session_state.messages, st.session_state.current_chat_id)
+
+                except Exception as e:
+                    logger.error(f"Error generating response: {str(e)}")
+                    st.error("Failed to generate response. Please try again.")
+
+        # Clear thinking spinner and temporary containers
+        thinking_placeholder.empty()
+
     st.markdown('<div class="input-container">', unsafe_allow_html=True)
     
     # Create message containers
