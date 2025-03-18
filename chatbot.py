@@ -183,38 +183,6 @@ st.markdown("""
         display: inline-flex;
         align-items: center;
     }
-    
-    /* Updated spinner positioning */
-    .thinking-spinner {
-        display: inline-flex;
-        align-items: center;
-        gap: 10px;
-        padding: 10px;
-        background-color: #444654;
-        border-radius: 10px;
-        margin: 10px 0;
-    }
-    
-    /* Cursor animation */
-    @keyframes blink {
-        0% { opacity: 1; }
-        50% { opacity: 0; }
-        100% { opacity: 1; }
-    }
-    
-    .cursor {
-        display: inline-block;
-        width: 0.5em;
-        height: 1.2em;
-        background-color: #ffffff;
-        margin-left: 2px;
-        animation: blink 1s infinite;
-    }
-    
-    .stSpinner {
-        display: inline-block !important;
-        margin-left: 10px !important;
-    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -494,6 +462,7 @@ def chat_interface():
     # Chat input and response handling
     if prompt := st.chat_input("Type your message here...", key="chat_input"):
         if not st.session_state.waiting_for_response:
+            # Add user message
             st.chat_message("user").write(prompt)
             user_message = {
                 "role": "user",
@@ -503,41 +472,34 @@ def chat_interface():
             st.session_state.waiting_for_response = True
 
             try:
+                # Prepare messages for API
                 api_messages = [
                     {"role": "system", "content": st.session_state.system_prompt},
                     *[format_message_for_api(msg) for msg in st.session_state.messages]
                 ]
 
-                # Create assistant message container with improved spinner
+                # Create assistant message container
                 assistant_response = st.chat_message("assistant")
-                with assistant_response:
-                    col1, col2 = st.columns([0.05, 0.95])
-                    with col1:
-                        st.markdown("🤖")
-                    with col2:
-                        response_placeholder = st.empty()
-                        
-                        with st.spinner(''):
-                            response = client.chat.completions.create(
-                                model="google/gemini-2.0-flash-thinking-exp:free",
-                                messages=api_messages,
-                                stream=True,
-                                extra_headers={
-                                    "HTTP-Referer": "https://your-site.com",
-                                    "X-Title": "AI Chat Assistant"
-                                }
-                            )
+                response_placeholder = assistant_response.empty()
+                
+                # Stream the response
+                full_response = ""
+                with st.spinner('Thinking...'):
+                    response = client.chat.completions.create(
+                        model="google/gemini-2.0-flash-thinking-exp:free",
+                        messages=api_messages,
+                        stream=True,
+                        extra_headers={
+                            "HTTP-Referer": "https://your-site.com",
+                            "X-Title": "AI Chat Assistant"
+                        }
+                    )
 
-                            # Stream response with cursor effect
-                            full_response = ""
-                            for chunk in response:
-                                if chunk.choices[0].delta.content:
-                                    full_response += chunk.choices[0].delta.content
-                                    response_placeholder.markdown(f"{full_response}<span class='cursor'></span>", unsafe_allow_html=True)
-                            
-                            # Final response without cursor
+                    for chunk in response:
+                        if chunk.choices[0].delta.content:
+                            full_response += chunk.choices[0].delta.content
                             response_placeholder.markdown(full_response)
-
+                
                 # Save assistant response
                 assistant_message = {
                     "role": "assistant",
