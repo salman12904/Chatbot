@@ -1,6 +1,6 @@
 import streamlit as st
 from langchain_astradb import AstraDBVectorStore
-from langchain.embeddings import HuggingFaceEmbeddings
+from langchain_community.embeddings import HuggingFaceEmbeddings  # Update import
 from langchain_core.documents import Document
 from datetime import datetime
 import json
@@ -12,6 +12,8 @@ from datetime import datetime, timezone
 import logging
 import os
 import pickle
+import asyncio
+from tenacity import retry, stop_after_attempt, wait_exponential
 
 # Add logging configuration
 logging.basicConfig(level=logging.INFO)
@@ -201,14 +203,18 @@ def format_message_for_api(message):
         }
     return message
 
-# AstraDB setup
-def setup_astradb():
-    embeddings = HuggingFaceEmbeddings(
+# Add at top level after imports
+@st.cache_resource
+def get_embeddings():
+    return HuggingFaceEmbeddings(
         model_name="all-MiniLM-L6-v2",
         model_kwargs={'device': 'cpu'},
         encode_kwargs={'normalize_embeddings': True}
     )
-    
+
+@st.cache_resource
+def get_vector_store():
+    embeddings = get_embeddings()
     vector_store = AstraDBVectorStore(
         collection_name="chatbot",
         embedding=embeddings,
@@ -216,6 +222,10 @@ def setup_astradb():
         api_endpoint=f"https://43a82168-253b-4872-92bf-2827c05c6743-us-east-2.apps.astra.datastax.com"
     )
     return vector_store
+
+# Replace setup_astradb function
+def setup_astradb():
+    return get_vector_store()
 
 # Modified save_conversation function with fallback
 def save_conversation(vector_store, messages: List[Dict], conversation_id: str):
@@ -361,6 +371,33 @@ def switch_conversation(conv_id):
     else:
         create_new_chat()
 
+def ensure_event_loop():
+    try:
+        loop = asyncio.get_event_loop()
+    except RuntimeError:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+    return loop
+
+# Add rate limiting to get_ai_response
+@retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=4, max=10))
+def get_ai_response(messages, model):
+    try:
+        time.sleep(0.5)  # Add rate limiting
+        response = client.chat.completions.create(
+            model=model,
+            messages=messages,
+            stream=True,
+            extra_headers={
+                "HTTP-Referer": "https://your-site.com",
+                "X-Title": "AI Chat Assistant"
+            }
+        )
+        return response
+    except Exception as e:
+        logger.error(f"API call failed: {str(e)}")
+        raise
+
 # Chat interface
 def chat_interface():
     try:
@@ -462,6 +499,8 @@ def chat_interface():
     # Chat input and response handling
     if prompt := st.chat_input("Type your message here...", key="chat_input"):
         if not st.session_state.waiting_for_response:
+            ensure_event_loop()  # Ensure event loop is available
+            
             # Add user message
             st.chat_message("user").write(prompt)
             user_message = {
@@ -482,24 +521,26 @@ def chat_interface():
                 assistant_response = st.chat_message("assistant")
                 response_placeholder = assistant_response.empty()
                 
-                # Stream the response
+                # Stream the response with retry mechanism
                 full_response = ""
                 with st.spinner('Thinking...'):
-                    response = client.chat.completions.create(
-                        model="google/gemini-2.0-flash-thinking-exp:free",
-                        messages=api_messages,
-                        stream=True,
-                        extra_headers={
-                            "HTTP-Referer": "https://your-site.com",
-                            "X-Title": "AI Chat Assistant"
-                        }
-                    )
+                    response = get_ai_response(api_messages, "google/gemini-2.0-flash-thinking-exp:free")
+                    
+                    try:
+                        for chunk in response:
+                            if chunk.choices[0].delta.content:
+                                full_response += chunk.choices[0].delta.content
+                                response_placeholder.markdown(full_response)
+                    except Exception as e:
+                        logger.error(f"Error streaming response: {str(e)}")
+                        # Retry streaming if it fails
+                        if not full_response:
+                            response = get_ai_response(api_messages, "google/gemini-2.0-flash-thinking-exp:free")
+                            for chunk in response:
+                                if chunk.choices[0].delta.content:
+                                    full_response += chunk.choices[0].delta.content
+                                    response_placeholder.markdown(full_response)
 
-                    for chunk in response:
-                        if chunk.choices[0].delta.content:
-                            full_response += chunk.choices[0].delta.content
-                            response_placeholder.markdown(full_response)
-                
                 # Save assistant response
                 assistant_message = {
                     "role": "assistant",
@@ -531,12 +572,5 @@ def chat_interface():
     st.markdown('</div>', unsafe_allow_html=True)
 
 if __name__ == "__main__":
-    try:
-        chat_interface()
-    except RuntimeError as e:
-        if "no running event loop" in str(e):
-            import asyncio
-            asyncio.set_event_loop(asyncio.new_event_loop())
-            chat_interface()
-        else:
-            raise e
+    ensure_event_loop()  # Initialize event loop at startup
+    chat_interface()

@@ -17,3 +17,4 @@ torch
 transformers
 langchain-community
 pdfminer.six
+tenacity
