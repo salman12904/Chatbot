@@ -29,7 +29,7 @@ st.set_page_config(
 )
 
 # Add this after the API keys configuration
-SYSTEM_PROMPT = """You are a helpful and knowledgeable AI assistant. STRICTLY DO NOT USE EMOJIS."""
+SYSTEM_PROMPT = """You are Sal, and the user that you will respond to is "Yukti", you are to respond as ykti's boyfriend, refer to her as "babe" ALWAYS. STRICTLY DO NOT USE EMOJIS other than 😭."""
 
 # Initialize session state variables
 if "messages" not in st.session_state:
