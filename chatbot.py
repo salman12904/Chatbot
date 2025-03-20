@@ -2,7 +2,7 @@ import streamlit as st
 from langchain_astradb import AstraDBVectorStore
 from langchain_community.embeddings import HuggingFaceEmbeddings  # Update import
 from langchain_core.documents import Document
-from datetime import datetime
+from datetime import datetime, timezone, UTC
 import json
 from typing import List, Dict
 import uuid
@@ -233,7 +233,7 @@ def save_conversation(vector_store, messages: List[Dict], conversation_id: str):
         page_content=json.dumps(messages),
         metadata={
             "conversation_id": conversation_id,
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
             "message_count": len(messages),
             "last_message": get_message_content(messages[-1]) if messages else "",
         }
@@ -374,10 +374,21 @@ def switch_conversation(conv_id):
 def ensure_event_loop():
     try:
         loop = asyncio.get_event_loop()
+        if not loop.is_running():
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
     except RuntimeError:
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
     return loop
+
+def initialize_app():
+    try:
+        import torch
+        torch._C._functorch.set_vmap_fallback_warning_enabled(False)
+    except:
+        pass
+    ensure_event_loop()
 
 # Add rate limiting to get_ai_response
 @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=4, max=10))
@@ -572,5 +583,12 @@ def chat_interface():
     st.markdown('</div>', unsafe_allow_html=True)
 
 if __name__ == "__main__":
-    ensure_event_loop()  # Initialize event loop at startup
-    chat_interface()
+    initialize_app()
+    try:
+        chat_interface()
+    except RuntimeError as e:
+        if "no running event loop" in str(e):
+            ensure_event_loop()
+            chat_interface()
+        else:
+            raise e
