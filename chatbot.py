@@ -384,11 +384,19 @@ def ensure_event_loop():
     return loop
 
 def initialize_app():
-    ensure_event_loop()
+    # Set up asyncio event loop
+    try:
+        loop = asyncio.get_event_loop()
+    except RuntimeError:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+    
+    # Disable torch warnings in a safer way
     try:
         import torch
-        torch._C._functorch.set_vmap_fallback_warning_enabled(False)
-    except:
+        import warnings
+        warnings.filterwarnings('ignore', category=UserWarning, module='torch')
+    except ImportError:
         pass
 
 # Add rate limiting to get_ai_response
@@ -644,9 +652,15 @@ if __name__ == "__main__":
     try:
         chat_interface()
     except Exception as e:
-        logger.error(f"Application error: {str(e)}")
         if "no running event loop" in str(e):
-            ensure_event_loop()
-            chat_interface()
+            # Force create new event loop if needed
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                chat_interface()
+            except Exception as inner_e:
+                logger.error(f"Nested error: {str(inner_e)}")
+                raise inner_e
         else:
+            logger.error(f"Application error: {str(e)}")
             raise e
