@@ -563,39 +563,37 @@ def chat_interface():
             st.session_state.waiting_for_response = True
 
             try:
-                # Prepare messages for API
-                system_prompt = st.session_state.system_prompt
-                if st.session_state.use_document_context:
-                    system_prompt += "\n\nWhen answering, use the following document context: " + get_document_context()
-                
-                api_messages = [
-                    {"role": "system", "content": system_prompt},
-                    *[format_message_for_api(msg) for msg in st.session_state.messages]
-                ]
-
-                # Create assistant message container
-                assistant_response = st.chat_message("assistant")
-                response_placeholder = assistant_response.empty()
-                
-                # Stream the response with retry mechanism
-                full_response = ""
+                # Show thinking spinner immediately after user message
                 with st.spinner('Thinking...'):
+                    # Prepare messages for API
+                    system_prompt = st.session_state.system_prompt
+                    if st.session_state.use_document_context:
+                        system_prompt += "\n\nWhen answering, use the following document context: " + get_document_context()
+                    
+                    api_messages = [
+                        {"role": "system", "content": system_prompt},
+                        *[format_message_for_api(msg) for msg in st.session_state.messages]
+                    ]
+
+                    # Get full response before showing assistant message
                     response = get_ai_response(api_messages, "google/gemini-2.0-flash-thinking-exp:free")
+                    full_response = ""
                     
                     try:
                         for chunk in response:
                             if chunk.choices[0].delta.content:
                                 full_response += chunk.choices[0].delta.content
-                                response_placeholder.markdown(full_response)
                     except Exception as e:
                         logger.error(f"Error streaming response: {str(e)}")
-                        # Retry streaming if it fails
                         if not full_response:
                             response = get_ai_response(api_messages, "google/gemini-2.0-flash-thinking-exp:free")
                             for chunk in response:
                                 if chunk.choices[0].delta.content:
                                     full_response += chunk.choices[0].delta.content
-                                    response_placeholder.markdown(full_response)
+
+                # After response is ready, display it
+                with st.chat_message("assistant"):
+                    st.write(full_response)
 
                 # Save assistant response
                 assistant_message = {
