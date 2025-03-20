@@ -417,9 +417,22 @@ def extract_text_from_pdf(pdf_file):
         text += page.extract_text() + "\n"
     return text
 
-def get_document_context():
+def format_document_context_for_model(model: str, document_text: str) -> str:
+    if "phi-3" in model.lower():
+        return f"""
+Below is the content of the document. Use this information to answer the user's questions:
+---BEGIN DOCUMENT---
+{document_text}
+---END DOCUMENT---
+
+Remember to reference the document content when answering questions about it.
+"""
+    # Default format (works well with Gemini and other models)
+    return f"\nDocument Content:\n{document_text}\n"
+
+def get_document_context(model: str = None):
     if st.session_state.document_text and st.session_state.use_document_context:
-        return f"\nDocument Context:\n{st.session_state.document_text}\n"
+        return format_document_context_for_model(model, st.session_state.document_text)
     return ""
 
 # Chat interface
@@ -568,15 +581,30 @@ def chat_interface():
             st.session_state.waiting_for_response = True
 
             try:
-                # Prepare messages for API
-                system_prompt = st.session_state.system_prompt
-                if st.session_state.use_document_context:
-                    system_prompt += "\n\nWhen answering, use the following document context: " + get_document_context()
+                # Prepare messages for API with better document context handling
+                document_context = get_document_context(model)
                 
-                api_messages = [
-                    {"role": "system", "content": system_prompt},
-                    *[format_message_for_api(msg) for msg in st.session_state.messages]
-                ]
+                if st.session_state.use_document_context:
+                    # For Phi-3, add explicit document instructions
+                    if "phi-3" in model.lower():
+                        api_messages = [
+                            {"role": "system", "content": st.session_state.system_prompt},
+                            {"role": "system", "content": document_context},
+                            {"role": "system", "content": "When answering questions, always check the document content provided above and reference it in your responses."},
+                            *[format_message_for_api(msg) for msg in st.session_state.messages]
+                        ]
+                    else:
+                        # For other models like Gemini
+                        system_prompt = f"{st.session_state.system_prompt}\n\n{document_context}"
+                        api_messages = [
+                            {"role": "system", "content": system_prompt},
+                            *[format_message_for_api(msg) for msg in st.session_state.messages]
+                        ]
+                else:
+                    api_messages = [
+                        {"role": "system", "content": st.session_state.system_prompt},
+                        *[format_message_for_api(msg) for msg in st.session_state.messages]
+                    ]
 
                 # Create assistant message container
                 assistant_response = st.chat_message("assistant")
