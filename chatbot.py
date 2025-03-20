@@ -334,39 +334,19 @@ def load_all_conversations(vector_store):
 def clear_chat():
     with st.spinner("Clearing all conversations..."):
         try:
-            # Create direct AstraDB client using astrapy.db.AstraDB
+            # Create AstraDB client using latest astrapy API
             astra_db = AstraDB(
                 token=ASTRA_DB_TOKEN,
                 api_endpoint=f"https://43a82168-253b-4872-92bf-2827c05c6743-us-east-2.apps.astra.datastax.com"
             )
-            try:
-                # Execute TRUNCATE command using the session from the AstraDB client
-                astra_db.session.execute("TRUNCATE TABLE default_keyspace.chatbot;")
-                logger.info("Successfully truncated AstraDB collection")
-            except Exception as e:
-                logger.error(f"Failed to truncate AstraDB collection: {str(e)}")
-                
-            # Clear local storage
-            for file in os.listdir(LOCAL_STORAGE_PATH):
-                file_path = os.path.join(LOCAL_STORAGE_PATH, file)
-                try:
-                    os.remove(file_path)
-                except Exception as e:
-                    logger.error(f"Failed to delete {file_path}: {str(e)}")
-                    
-            # Reset state
-            st.session_state.messages = []
-            st.session_state.current_chat_id = str(uuid.uuid4())
-            st.session_state.chat_titles = {}
-            st.session_state.loaded_chats = {}
-            time.sleep(0.5)  # Short delay for visual feedback
-            
+            # Execute TRUNCATE command to clear all data in the collection
+            astra_db.execute_query("TRUNCATE TABLE default_keyspace.chatbot;")
+            logger.info("Successfully truncated AstraDB collection")
         except Exception as e:
-            logger.error(f"Failed to clear conversations: {str(e)}")
-            st.error("Failed to clear some conversations")
+            logger.error(f"Failed to clear AstraDB collection: {str(e)}")
+            st.error("Failed to clear conversations in AstraDB")
             return
-            
-    st.rerun()
+        st.rerun()
 
 def create_new_chat():
     st.session_state.messages = []
