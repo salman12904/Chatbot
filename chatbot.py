@@ -87,7 +87,6 @@ st.markdown("""
     }
     .chat-message {
         display: flex;
-        align-items: flex-start;
         gap: 10px;
         padding: 1rem;
         border-radius: 0.5rem;
@@ -96,17 +95,17 @@ st.markdown("""
         transition: all 0.3s ease;
         opacity: 1;
     }
-    .chat-message.fade-in {
-        opacity: 0;
-    }
     .chat-message.user {
         background-color: #2b2d31;
         margin-left: auto;
+        margin-right: 0;
         flex-direction: row-reverse;
     }
     .chat-message.assistant {
         background-color: #444654;
         margin-right: auto;
+        margin-left: 0;
+        flex-direction: row;
     }
     .avatar {
         width: 30px;
@@ -544,8 +543,15 @@ def chat_interface():
     with chat_container:
         st.markdown('<div class="main-container">', unsafe_allow_html=True)
         for message in st.session_state.messages:
-            with st.chat_message(message["role"]):
-                st.write(get_message_content(message))
+            role = message["role"]
+            content = get_message_content(message)
+            with st.chat_message(role, avatar=None):  # Remove default avatar
+                st.markdown(f"""
+                    <div class="chat-message {role}">
+                        <div class="avatar">{'👤' if role == 'user' else '🤖'}</div>
+                        <div class="message-content">{content}</div>
+                    </div>
+                """, unsafe_allow_html=True)
         st.markdown('</div>', unsafe_allow_html=True)
 
     # Chat input and response handling
