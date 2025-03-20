@@ -2,7 +2,7 @@ import streamlit as st
 from langchain_astradb import AstraDBVectorStore
 from langchain_community.embeddings import HuggingFaceEmbeddings  # Update import
 from langchain_core.documents import Document
-from datetime import datetime, timezone, UTC
+from datetime import datetime, timezone
 import json
 from typing import List, Dict
 import uuid
@@ -14,6 +14,8 @@ import os
 import pickle
 import asyncio
 from tenacity import retry, stop_after_attempt, wait_exponential
+from PyPDF2 import PdfReader
+import io
 
 # Add logging configuration
 logging.basicConfig(level=logging.INFO)
@@ -55,6 +57,10 @@ if "page_refreshed" not in st.session_state:
     st.session_state.conversation_id = str(uuid.uuid4())
 if "waiting_for_response" not in st.session_state:
     st.session_state.waiting_for_response = False
+if "document_text" not in st.session_state:
+    st.session_state.document_text = None
+if "use_document_context" not in st.session_state:
+    st.session_state.use_document_context = False
 
 # Configurations and API keys
 OPENROUTER_API_KEY = st.secrets["OPENROUTER_API_KEY"]
@@ -233,7 +239,7 @@ def save_conversation(vector_store, messages: List[Dict], conversation_id: str):
         page_content=json.dumps(messages),
         metadata={
             "conversation_id": conversation_id,
-            "timestamp": datetime.now(UTC).isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "message_count": len(messages),
             "last_message": get_message_content(messages[-1]) if messages else "",
         }
@@ -409,6 +415,18 @@ def get_ai_response(messages, model):
         logger.error(f"API call failed: {str(e)}")
         raise
 
+def extract_text_from_pdf(pdf_file):
+    pdf_reader = PdfReader(io.BytesIO(pdf_file.read()))
+    text = ""
+    for page in pdf_reader.pages:
+        text += page.extract_text() + "\n"
+    return text
+
+def get_document_context():
+    if st.session_state.document_text and st.session_state.use_document_context:
+        return f"\nDocument Context:\n{st.session_state.document_text}\n"
+    return ""
+
 # Chat interface
 def chat_interface():
     try:
@@ -454,6 +472,31 @@ def chat_interface():
                     use_container_width=True,
                 ):
                     switch_conversation(chat_id)
+
+        st.divider()
+        st.title("📄 Document Chat")
+        
+        # Document upload
+        uploaded_file = st.file_uploader("Upload PDF Document", type=['pdf'])
+        if uploaded_file:
+            if st.button("Process Document"):
+                with st.spinner("Processing document..."):
+                    st.session_state.document_text = extract_text_from_pdf(uploaded_file)
+                    st.success(f"Processed document: {uploaded_file.name}")
+                    st.session_state.use_document_context = True
+
+        # Document context toggle
+        if st.session_state.document_text is not None:
+            st.checkbox("Use Document Context", 
+                       value=st.session_state.use_document_context,
+                       key="doc_context_toggle",
+                       on_change=lambda: setattr(st.session_state, 'use_document_context', 
+                                               st.session_state.doc_context_toggle))
+            
+            if st.button("Clear Document"):
+                st.session_state.document_text = None
+                st.session_state.use_document_context = False
+                st.rerun()
 
         st.divider()
         # Settings
@@ -523,8 +566,12 @@ def chat_interface():
 
             try:
                 # Prepare messages for API
+                system_prompt = st.session_state.system_prompt
+                if st.session_state.use_document_context:
+                    system_prompt += "\n\nWhen answering, use the following document context: " + get_document_context()
+                
                 api_messages = [
-                    {"role": "system", "content": st.session_state.system_prompt},
+                    {"role": "system", "content": system_prompt},
                     *[format_message_for_api(msg) for msg in st.session_state.messages]
                 ]
 
