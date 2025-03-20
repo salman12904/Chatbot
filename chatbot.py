@@ -92,8 +92,6 @@ st.markdown("""
         border-radius: 0.5rem;
         max-width: 80%;
         margin: 0.5rem 0;
-        transition: all 0.3s ease;
-        opacity: 1;
     }
     .chat-message.user {
         background-color: #2b2d31;
@@ -545,13 +543,14 @@ def chat_interface():
         for message in st.session_state.messages:
             role = message["role"]
             content = get_message_content(message)
-            with st.chat_message(role, avatar=None):  # Remove default avatar
-                st.markdown(f"""
-                    <div class="chat-message {role}">
-                        <div class="avatar">{'👤' if role == 'user' else '🤖'}</div>
-                        <div class="message-content">{content}</div>
-                    </div>
-                """, unsafe_allow_html=True)
+            avatar_icon = '👤' if role == 'user' else '🤖'
+            
+            st.markdown(f"""
+                <div class="chat-message {role}">
+                    <div class="avatar">{avatar_icon}</div>
+                    <div class="message-content">{content}</div>
+                </div>
+            """, unsafe_allow_html=True)
         st.markdown('</div>', unsafe_allow_html=True)
 
     # Chat input and response handling
