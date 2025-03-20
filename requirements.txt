@@ -20,4 +20,4 @@ pdfminer.six
 tenacity
 PyPDF2
 SpeechRecognition
-PyAudio
+PyAudio==0.2.13
