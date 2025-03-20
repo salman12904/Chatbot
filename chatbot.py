@@ -340,7 +340,7 @@ def clear_chat():
                 api_endpoint=f"https://43a82168-253b-4872-92bf-2827c05c6743-us-east-2.apps.astra.datastax.com"
             )
             # Execute TRUNCATE command to clear all data in the collection
-            astra_db.execute_query("TRUNCATE TABLE default_keyspace.chatbot;")
+            astra_db.execute_cql("TRUNCATE TABLE default_keyspace.chatbot;")
             logger.info("Successfully truncated AstraDB collection")
         except Exception as e:
             logger.error(f"Failed to clear AstraDB collection: {str(e)}")
