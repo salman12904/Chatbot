@@ -419,7 +419,7 @@ def extract_text_from_pdf(pdf_file):
 
 def get_document_context():
     if st.session_state.document_text and st.session_state.use_document_context:
-        return f"\nDocument Content:\n{st.session_state.document_text}\n"
+        return f"\nDocument Context:\n{st.session_state.document_text}\n"
     return ""
 
 # Chat interface
@@ -496,7 +496,7 @@ def chat_interface():
         st.divider()
         # Settings
         st.title("⚙️ Settings")
-        model = "microsoft/phi-3-medium-128k-instruct:free"
+        model = "google/gemini-2.0-flash-thinking-exp:free"
         
         # Add this in the sidebar settings section, before the clear conversations button
         st.title("🎯 Assistant Settings")
@@ -568,29 +568,15 @@ def chat_interface():
             st.session_state.waiting_for_response = True
 
             try:
-                # Prepare messages for API with document context
-                document_context = get_document_context()
-                context_message = {
-                    "role": "system",
-                    "content": f"{st.session_state.system_prompt}\n\n{document_context}" if document_context else st.session_state.system_prompt
-                }
+                # Prepare messages for API
+                system_prompt = st.session_state.system_prompt
+                if st.session_state.use_document_context:
+                    system_prompt += "\n\nWhen answering, use the following document context: " + get_document_context()
                 
-                # If there's document context, add it as context message
-                if document_context:
-                    context_note = {
-                        "role": "system",
-                        "content": "The following conversation will be about the document provided above. Use this context to answer questions."
-                    }
-                    api_messages = [
-                        context_message,
-                        context_note,
-                        *[format_message_for_api(msg) for msg in st.session_state.messages]
-                    ]
-                else:
-                    api_messages = [
-                        context_message,
-                        *[format_message_for_api(msg) for msg in st.session_state.messages]
-                    ]
+                api_messages = [
+                    {"role": "system", "content": system_prompt},
+                    *[format_message_for_api(msg) for msg in st.session_state.messages]
+                ]
 
                 # Create assistant message container
                 assistant_response = st.chat_message("assistant")
@@ -599,7 +585,7 @@ def chat_interface():
                 # Stream the response with retry mechanism
                 full_response = ""
                 with st.spinner('Thinking...'):
-                    response = get_ai_response(api_messages, "microsoft/phi-3-medium-128k-instruct:free")
+                    response = get_ai_response(api_messages, "google/gemini-2.0-flash-thinking-exp:free")
                     
                     try:
                         for chunk in response:
@@ -610,7 +596,7 @@ def chat_interface():
                         logger.error(f"Error streaming response: {str(e)}")
                         # Retry streaming if it fails
                         if not full_response:
-                            response = get_ai_response(api_messages, "microsoft/phi-3-medium-128k-instruct:free")
+                            response = get_ai_response(api_messages, "google/gemini-2.0-flash-thinking-exp:free")
                             for chunk in response:
                                 if chunk.choices[0].delta.content:
                                     full_response += chunk.choices[0].delta.content
