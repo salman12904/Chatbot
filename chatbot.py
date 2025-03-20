@@ -23,7 +23,7 @@ os.makedirs(LOCAL_STORAGE_PATH, exist_ok=True)
 
 # Streamlit page config
 st.set_page_config(
-    page_title="AI Chat Assistant",
+    page_title="Yukti's AI Chat Assistant",
     page_icon="🌠",
     layout="wide"
 )
