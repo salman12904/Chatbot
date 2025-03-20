@@ -335,8 +335,8 @@ def clear_chat():
         try:
             vector_store = setup_astradb()
             if vector_store:
-                vector_store.delete_collection()
-                vector_store = setup_astradb()
+                # Truncate collection instead of deleting it
+                vector_store.collection.delete_many({})  # This removes all documents but keeps the collection
                 
             for file in os.listdir(LOCAL_STORAGE_PATH):
                 file_path = os.path.join(LOCAL_STORAGE_PATH, file)
