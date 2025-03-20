@@ -334,18 +334,25 @@ def load_all_conversations(vector_store):
 def clear_chat():
     with st.spinner("Clearing all conversations..."):
         try:
+            # Clear AstraDB collection
             astra_db = AstraDB(
                 token=ASTRA_DB_TOKEN,
                 api_endpoint=f"https://43a82168-253b-4872-92bf-2827c05c6743-us-east-2.apps.astra.datastax.com"
             )
             collection = astra_db.collection("chatbot")
-            collection.delete_many({})  # Deletes all documents in the collection
+            collection.delete_many({})
             
-            # Also clear local storage
+            # Clear local storage
             for file in os.listdir(LOCAL_STORAGE_PATH):
                 if file.endswith('.pkl'):
                     os.remove(os.path.join(LOCAL_STORAGE_PATH, file))
-                    
+            
+            # Clear session state
+            st.session_state.messages = []
+            st.session_state.loaded_chats = {}
+            st.session_state.chat_titles = {}
+            st.session_state.current_chat_id = str(uuid.uuid4())
+            
             logger.info("Successfully cleared all conversations")
             st.rerun()
         except Exception as e:
