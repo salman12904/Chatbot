@@ -19,5 +19,3 @@ langchain-community
 pdfminer.six
 tenacity
 PyPDF2
-SpeechRecognition
-PyAudio==0.2.13
