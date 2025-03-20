@@ -336,11 +336,11 @@ def clear_chat():
             vector_store = setup_astradb()
             if vector_store:
                 try:
-                    # Access AstraDB correctly through vector_store
-                    vector_store.client.delete_all()  # Use the client's delete_all method
-                    logger.info("Successfully cleared AstraDB collection")
+                    # Use direct TRUNCATE command
+                    vector_store.astra_db.execute("TRUNCATE TABLE default_keyspace.chatbot;")
+                    logger.info("Successfully truncated AstraDB collection")
                 except Exception as e:
-                    logger.error(f"Failed to clear AstraDB collection: {str(e)}")
+                    logger.error(f"Failed to truncate AstraDB collection: {str(e)}")
                 
             # Clear local storage
             for file in os.listdir(LOCAL_STORAGE_PATH):
