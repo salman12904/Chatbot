@@ -335,9 +335,14 @@ def clear_chat():
         try:
             vector_store = setup_astradb()
             if vector_store:
-                # Truncate collection instead of deleting it
-                vector_store.collection.delete_many({})  # This removes all documents but keeps the collection
+                try:
+                    # Use AstraDB's native query interface to clear documents
+                    vector_store._astra_db.clear_collection("chatbot")
+                    logger.info("Successfully cleared AstraDB collection")
+                except Exception as e:
+                    logger.error(f"Failed to clear AstraDB collection: {str(e)}")
                 
+            # Clear local storage
             for file in os.listdir(LOCAL_STORAGE_PATH):
                 file_path = os.path.join(LOCAL_STORAGE_PATH, file)
                 try:
@@ -345,6 +350,7 @@ def clear_chat():
                 except Exception as e:
                     logger.error(f"Failed to delete {file_path}: {str(e)}")
                     
+            # Reset state
             st.session_state.messages = []
             st.session_state.current_chat_id = str(uuid.uuid4())
             st.session_state.chat_titles = {}
@@ -380,21 +386,18 @@ def switch_conversation(conv_id):
 def ensure_event_loop():
     try:
         loop = asyncio.get_event_loop()
-        if not loop.is_running():
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
     except RuntimeError:
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
     return loop
 
 def initialize_app():
+    ensure_event_loop()
     try:
         import torch
         torch._C._functorch.set_vmap_fallback_warning_enabled(False)
     except:
         pass
-    ensure_event_loop()
 
 # Add rate limiting to get_ai_response
 @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=4, max=10))
@@ -633,7 +636,8 @@ if __name__ == "__main__":
     initialize_app()
     try:
         chat_interface()
-    except RuntimeError as e:
+    except Exception as e:
+        logger.error(f"Application error: {str(e)}")
         if "no running event loop" in str(e):
             ensure_event_loop()
             chat_interface()
