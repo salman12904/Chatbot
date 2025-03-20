@@ -334,20 +334,17 @@ def load_all_conversations(vector_store):
 def clear_chat():
     with st.spinner("Clearing all conversations..."):
         try:
-            # Create direct AstraDB client
+            # Create direct AstraDB client using astrapy.db.AstraDB
             astra_db = AstraDB(
                 token=ASTRA_DB_TOKEN,
                 api_endpoint=f"https://43a82168-253b-4872-92bf-2827c05c6743-us-east-2.apps.astra.datastax.com"
             )
-            
             try:
-                # Clear collection using direct Astra client
-                astra_db.collection("chatbot").find({}).delete_many()
-                logger.info("Successfully cleared AstraDB collection")
+                # Execute TRUNCATE command directly
+                astra_db.execute("TRUNCATE TABLE default_keyspace.chatbot;")
+                logger.info("Successfully truncated AstraDB collection")
             except Exception as e:
                 logger.error(f"Failed to truncate AstraDB collection: {str(e)}")
-            finally:
-                astra_db.close()  # Ensure connection is closed
                 
             # Clear local storage
             for file in os.listdir(LOCAL_STORAGE_PATH):
@@ -362,7 +359,7 @@ def clear_chat():
             st.session_state.current_chat_id = str(uuid.uuid4())
             st.session_state.chat_titles = {}
             st.session_state.loaded_chats = {}
-            time.sleep(0.5)
+            time.sleep(0.5)  # Short delay for visual feedback
             
         except Exception as e:
             logger.error(f"Failed to clear conversations: {str(e)}")
