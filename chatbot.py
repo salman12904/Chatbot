@@ -496,7 +496,7 @@ def chat_interface():
         st.divider()
         # Settings
         st.title("⚙️ Settings")
-        model = "google/gemini-2.0-flash-thinking-exp:free"
+        model = "microsoft/phi-3-medium-128k-instruct:free"
         
         # Add this in the sidebar settings section, before the clear conversations button
         st.title("🎯 Assistant Settings")
@@ -585,7 +585,7 @@ def chat_interface():
                 # Stream the response with retry mechanism
                 full_response = ""
                 with st.spinner('Thinking...'):
-                    response = get_ai_response(api_messages, "google/gemini-2.0-flash-thinking-exp:free")
+                    response = get_ai_response(api_messages, "microsoft/phi-3-medium-128k-instruct:free")
                     
                     try:
                         for chunk in response:
@@ -596,7 +596,7 @@ def chat_interface():
                         logger.error(f"Error streaming response: {str(e)}")
                         # Retry streaming if it fails
                         if not full_response:
-                            response = get_ai_response(api_messages, "google/gemini-2.0-flash-thinking-exp:free")
+                            response = get_ai_response(api_messages, "microsoft/phi-3-medium-128k-instruct:free")
                             for chunk in response:
                                 if chunk.choices[0].delta.content:
                                     full_response += chunk.choices[0].delta.content
