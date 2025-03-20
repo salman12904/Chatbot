@@ -17,6 +17,8 @@ from tenacity import retry, stop_after_attempt, wait_exponential
 from PyPDF2 import PdfReader
 import io
 from astrapy.db import AstraDB  # Add this import at the top with other imports
+import speech_recognition as sr
+from tempfile import NamedTemporaryFile
 
 # Add logging configuration
 logging.basicConfig(level=logging.INFO)
@@ -425,6 +427,22 @@ def get_document_context():
         return f"\nDocument Context:\n{st.session_state.document_text}\n"
     return ""
 
+def listen_for_speech():
+    r = sr.Recognizer()
+    with sr.Microphone() as source:
+        r.adjust_for_ambient_noise(source)
+        try:
+            audio = r.listen(source, timeout=5, phrase_time_limit=10)
+            try:
+                text = r.recognize_google(audio)  # Using Google's free speech recognition
+                return text
+            except sr.UnknownValueError:
+                return "Sorry, I couldn't understand that."
+            except sr.RequestError:
+                return "Sorry, there was an error with the speech recognition service."
+        except sr.WaitTimeoutError:
+            return "No speech detected."
+
 # Chat interface
 def chat_interface():
     try:
@@ -549,7 +567,21 @@ def chat_interface():
         st.markdown('</div>', unsafe_allow_html=True)
 
     # Chat input and response handling
-    if prompt := st.chat_input("Type your message here...", key="chat_input"):
+    col1, col2 = st.columns([20, 1])
+    with col1:
+        prompt = st.chat_input("Type your message here...", key="chat_input")
+    with col2:
+        mic_button = st.button("🎤", key="mic_button")
+
+    if mic_button:
+        with st.spinner("Listening..."):
+            speech_text = listen_for_speech()
+            if not speech_text.startswith("Sorry"):
+                prompt = speech_text
+            else:
+                st.error(speech_text)
+
+    if prompt:
         if not st.session_state.waiting_for_response:
             ensure_event_loop()  # Ensure event loop is available
             
