@@ -543,7 +543,9 @@ def chat_interface():
     chat_container = st.container()
     with chat_container:
         st.markdown('<div class="main-container">', unsafe_allow_html=True)
-        for message in st.session_state.messages:
+        # Only display messages that are complete (not waiting for response)
+        display_messages = st.session_state.messages[:-1] if st.session_state.waiting_for_response else st.session_state.messages
+        for message in display_messages:
             with st.chat_message(message["role"]):
                 st.write(get_message_content(message))
         st.markdown('</div>', unsafe_allow_html=True)
@@ -551,76 +553,82 @@ def chat_interface():
     # Chat input and response handling
     if prompt := st.chat_input("Type your message here...", key="chat_input"):
         if not st.session_state.waiting_for_response:
-            ensure_event_loop()  # Ensure event loop is available
-            
-            # Add user message
-            st.chat_message("user").write(prompt)
-            user_message = {
-                "role": "user",
-                "content": [{"type": "text", "text": prompt}]
-            }
-            st.session_state.messages.append(user_message)
+            ensure_event_loop()
             st.session_state.waiting_for_response = True
+            
+            # Create a temporary container for the current interaction
+            current_interaction = st.container()
+            
+            # Show user message
+            with current_interaction:
+                with st.chat_message("user"):
+                    st.write(prompt)
+                
+                # Prepare user message for later storage
+                user_message = {
+                    "role": "user",
+                    "content": [{"type": "text", "text": prompt}]
+                }
 
-            try:
-                # Show thinking spinner immediately after user message
-                with st.spinner('Thinking...'):
-                    # Prepare messages for API
-                    system_prompt = st.session_state.system_prompt
-                    if st.session_state.use_document_context:
-                        system_prompt += "\n\nWhen answering, use the following document context: " + get_document_context()
-                    
-                    api_messages = [
-                        {"role": "system", "content": system_prompt},
-                        *[format_message_for_api(msg) for msg in st.session_state.messages]
-                    ]
+                try:
+                    with st.spinner('Thinking...'):
+                        # Prepare messages for API
+                        system_prompt = st.session_state.system_prompt
+                        if st.session_state.use_document_context:
+                            system_prompt += "\n\nWhen answering, use the following document context: " + get_document_context()
+                        
+                        api_messages = [
+                            {"role": "system", "content": system_prompt},
+                            *[format_message_for_api(msg) for msg in st.session_state.messages],
+                            format_message_for_api(user_message)
+                        ]
 
-                    # Get full response before showing assistant message
-                    response = get_ai_response(api_messages, "google/gemini-2.0-flash-thinking-exp:free")
-                    full_response = ""
-                    
-                    try:
-                        for chunk in response:
-                            if chunk.choices[0].delta.content:
-                                full_response += chunk.choices[0].delta.content
-                    except Exception as e:
-                        logger.error(f"Error streaming response: {str(e)}")
-                        if not full_response:
-                            response = get_ai_response(api_messages, "google/gemini-2.0-flash-thinking-exp:free")
+                        # Get full response
+                        response = get_ai_response(api_messages, "google/gemini-2.0-flash-thinking-exp:free")
+                        full_response = ""
+                        
+                        try:
                             for chunk in response:
                                 if chunk.choices[0].delta.content:
                                     full_response += chunk.choices[0].delta.content
+                        except Exception as e:
+                            logger.error(f"Error streaming response: {str(e)}")
+                            if not full_response:
+                                response = get_ai_response(api_messages, "google/gemini-2.0-flash-thinking-exp:free")
+                                for chunk in response:
+                                    if chunk.choices[0].delta.content:
+                                        full_response += chunk.choices[0].delta.content
 
-                # After response is ready, display it
-                with st.chat_message("assistant"):
-                    st.write(full_response)
+                    # Show assistant response in current interaction
+                    with st.chat_message("assistant"):
+                        st.write(full_response)
 
-                # Save assistant response
-                assistant_message = {
-                    "role": "assistant",
-                    "content": [{"type": "text", "text": full_response}]
-                }
-                st.session_state.messages.append(assistant_message)
+                    # Only update session state after successful response
+                    st.session_state.messages.append(user_message)
+                    assistant_message = {
+                        "role": "assistant",
+                        "content": [{"type": "text", "text": full_response}]
+                    }
+                    st.session_state.messages.append(assistant_message)
 
-                # Update chat title if first message
-                if len(st.session_state.messages) == 2:
-                    st.session_state.chat_titles[st.session_state.current_chat_id] = get_chat_title([user_message])
+                    # Update chat title if first message
+                    if len(st.session_state.messages) == 2:
+                        st.session_state.chat_titles[st.session_state.current_chat_id] = get_chat_title([user_message])
 
-                # Save conversation
-                st.session_state.loaded_chats[st.session_state.current_chat_id] = {
-                    "messages": st.session_state.messages,
-                    "timestamp": datetime.now(timezone.utc).isoformat(),
-                    "title": st.session_state.chat_titles[st.session_state.current_chat_id]
-                }
-                save_conversation(vector_store, st.session_state.messages, st.session_state.current_chat_id)
+                    # Save conversation
+                    st.session_state.loaded_chats[st.session_state.current_chat_id] = {
+                        "messages": st.session_state.messages,
+                        "timestamp": datetime.now(timezone.utc).isoformat(),
+                        "title": st.session_state.chat_titles[st.session_state.current_chat_id]
+                    }
+                    save_conversation(vector_store, st.session_state.messages, st.session_state.current_chat_id)
 
-            except Exception as e:
-                logger.error(f"Error generating response: {str(e)}")
-                st.error("Failed to generate response. Please try again.")
-                st.session_state.messages.pop()  # Remove failed user message
-            
-            finally:
-                st.session_state.waiting_for_response = False
+                except Exception as e:
+                    logger.error(f"Error generating response: {str(e)}")
+                    st.error("Failed to generate response. Please try again.")
+                
+                finally:
+                    st.session_state.waiting_for_response = False
 
     st.markdown('<div class="input-container">', unsafe_allow_html=True)
     st.markdown('</div>', unsafe_allow_html=True)
