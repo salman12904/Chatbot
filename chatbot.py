@@ -192,6 +192,26 @@ st.markdown("""
         display: inline-flex;
         align-items: center;
     }
+    
+    /* Assistant message with spinner */
+    .assistant-loading {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+    
+    /* Custom spinner container */
+    div[data-testid="stSpinner"] {
+        padding: 0;
+        background-color: transparent;
+        margin: 0;
+    }
+    
+    /* Align spinner with assistant icon */
+    .stSpinner > div {
+        margin-left: 10px;
+        margin-top: 8px;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -551,78 +571,67 @@ def chat_interface():
     # Chat input and response handling
     if prompt := st.chat_input("Type your message here...", key="chat_input"):
         if not st.session_state.waiting_for_response:
-            ensure_event_loop()  # Ensure event loop is available
+            ensure_event_loop()
             
-            # Add user message
+            # Show user message
             st.chat_message("user").write(prompt)
-            user_message = {
-                "role": "user",
-                "content": [{"type": "text", "text": prompt}]
-            }
-            st.session_state.messages.append(user_message)
-            st.session_state.waiting_for_response = True
-
-            try:
-                # Prepare messages for API
-                system_prompt = st.session_state.system_prompt
-                if st.session_state.use_document_context:
-                    system_prompt += "\n\nWhen answering, use the following document context: " + get_document_context()
-                
-                api_messages = [
-                    {"role": "system", "content": system_prompt},
-                    *[format_message_for_api(msg) for msg in st.session_state.messages]
-                ]
-
-                # Create assistant message container
-                assistant_response = st.chat_message("assistant")
-                response_placeholder = assistant_response.empty()
-                
-                # Stream the response with retry mechanism
-                full_response = ""
-                with st.spinner('Thinking...'):
-                    response = get_ai_response(api_messages, "google/gemini-2.0-flash-thinking-exp:free")
-                    
+            
+            # Create assistant message container with spinner
+            with st.chat_message("assistant"):
+                with st.status("Thinking...", expanded=False) as status:
                     try:
+                        user_message = {
+                            "role": "user",
+                            "content": [{"type": "text", "text": prompt}]
+                        }
+                        
+                        system_prompt = st.session_state.system_prompt
+                        if st.session_state.use_document_context:
+                            system_prompt += "\n\nWhen answering, use the following document context: " + get_document_context()
+                        
+                        api_messages = [
+                            {"role": "system", "content": system_prompt},
+                            *[format_message_for_api(msg) for msg in st.session_state.messages],
+                            format_message_for_api(user_message)
+                        ]
+
+                        # Get response
+                        response = get_ai_response(api_messages, "google/gemini-2.0-flash-thinking-exp:free")
+                        full_response = ""
+                        
                         for chunk in response:
                             if chunk.choices[0].delta.content:
                                 full_response += chunk.choices[0].delta.content
-                                response_placeholder.markdown(full_response)
+                        
+                        # Display the response
+                        st.write(full_response)
+                        status.update(state="complete", expanded=False)
+
+                        # Update session state
+                        st.session_state.messages.append(user_message)
+                        assistant_message = {
+                            "role": "assistant",
+                            "content": [{"type": "text", "text": full_response}]
+                        }
+                        st.session_state.messages.append(assistant_message)
+
+                        # Update chat title if first message
+                        if len(st.session_state.messages) == 2:
+                            st.session_state.chat_titles[st.session_state.current_chat_id] = get_chat_title([user_message])
+
+                        # Save conversation
+                        st.session_state.loaded_chats[st.session_state.current_chat_id] = {
+                            "messages": st.session_state.messages,
+                            "timestamp": datetime.now(timezone.utc).isoformat(),
+                            "title": st.session_state.chat_titles[st.session_state.current_chat_id]
+                        }
+                        save_conversation(vector_store, st.session_state.messages, st.session_state.current_chat_id)
+
                     except Exception as e:
-                        logger.error(f"Error streaming response: {str(e)}")
-                        # Retry streaming if it fails
-                        if not full_response:
-                            response = get_ai_response(api_messages, "google/gemini-2.0-flash-thinking-exp:free")
-                            for chunk in response:
-                                if chunk.choices[0].delta.content:
-                                    full_response += chunk.choices[0].delta.content
-                                    response_placeholder.markdown(full_response)
-
-                # Save assistant response
-                assistant_message = {
-                    "role": "assistant",
-                    "content": [{"type": "text", "text": full_response}]
-                }
-                st.session_state.messages.append(assistant_message)
-
-                # Update chat title if first message
-                if len(st.session_state.messages) == 2:
-                    st.session_state.chat_titles[st.session_state.current_chat_id] = get_chat_title([user_message])
-
-                # Save conversation
-                st.session_state.loaded_chats[st.session_state.current_chat_id] = {
-                    "messages": st.session_state.messages,
-                    "timestamp": datetime.now(timezone.utc).isoformat(),
-                    "title": st.session_state.chat_titles[st.session_state.current_chat_id]
-                }
-                save_conversation(vector_store, st.session_state.messages, st.session_state.current_chat_id)
-
-            except Exception as e:
-                logger.error(f"Error generating response: {str(e)}")
-                st.error("Failed to generate response. Please try again.")
-                st.session_state.messages.pop()  # Remove failed user message
-            
-            finally:
-                st.session_state.waiting_for_response = False
+                        logger.error(f"Error generating response: {str(e)}")
+                        st.error("Failed to generate response. Please try again.")
+                    finally:
+                        st.session_state.waiting_for_response = False
 
     st.markdown('<div class="input-container">', unsafe_allow_html=True)
     st.markdown('</div>', unsafe_allow_html=True)
