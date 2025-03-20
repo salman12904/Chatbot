@@ -336,8 +336,9 @@ def clear_chat():
             vector_store = setup_astradb()
             if vector_store:
                 try:
-                    # Use AstraDB's native query interface to clear documents
-                    vector_store._astra_db.clear_collection("chatbot")
+                    # Access AstraDB correctly and clear documents
+                    astra_db = vector_store.get_astra_db()  # Get AstraDB instance
+                    astra_db.delete_many("chatbot", filter={})  # Clear all documents
                     logger.info("Successfully cleared AstraDB collection")
                 except Exception as e:
                     logger.error(f"Failed to clear AstraDB collection: {str(e)}")
