@@ -422,6 +422,17 @@ def get_document_context():
         return f"\nDocument Context:\n{st.session_state.document_text}\n"
     return ""
 
+# Add this helper function at the top level
+def display_message(role: str, content: str, container=st):
+    """Display a message in ChatGPT-like format"""
+    avatar_icon = '👤' if role == 'user' else '🤖'
+    container.markdown(f"""
+        <div class="chat-message {role}">
+            <div class="avatar">{avatar_icon}</div>
+            <div class="message-content">{content}</div>
+        </div>
+    """, unsafe_allow_html=True)
+
 # Chat interface
 def chat_interface():
     try:
@@ -540,26 +551,24 @@ def chat_interface():
     chat_container = st.container()
     with chat_container:
         st.markdown('<div class="main-container">', unsafe_allow_html=True)
+        
+        # Display all previous messages
         for message in st.session_state.messages:
             role = message["role"]
             content = get_message_content(message)
-            avatar_icon = '👤' if role == 'user' else '🤖'
-            
-            st.markdown(f"""
-                <div class="chat-message {role}">
-                    <div class="avatar">{avatar_icon}</div>
-                    <div class="message-content">{content}</div>
-                </div>
-            """, unsafe_allow_html=True)
+            display_message(role, content)
+
         st.markdown('</div>', unsafe_allow_html=True)
 
     # Chat input and response handling
     if prompt := st.chat_input("Type your message here...", key="chat_input"):
         if not st.session_state.waiting_for_response:
-            ensure_event_loop()  # Ensure event loop is available
+            ensure_event_loop()
             
-            # Add user message
-            st.chat_message("user").write(prompt)
+            # Immediately display user message in ChatGPT format
+            display_message("user", prompt)
+            
+            # Add user message to state
             user_message = {
                 "role": "user",
                 "content": [{"type": "text", "text": prompt}]
@@ -578,12 +587,10 @@ def chat_interface():
                     *[format_message_for_api(msg) for msg in st.session_state.messages]
                 ]
 
-                # Create assistant message container
-                assistant_response = st.chat_message("assistant")
-                response_placeholder = assistant_response.empty()
-                
-                # Stream the response with retry mechanism
+                # Create response placeholder for streaming
+                placeholder = st.empty()
                 full_response = ""
+
                 with st.spinner('Thinking...'):
                     response = get_ai_response(api_messages, "google/gemini-2.0-flash-thinking-exp:free")
                     
@@ -591,16 +598,16 @@ def chat_interface():
                         for chunk in response:
                             if chunk.choices[0].delta.content:
                                 full_response += chunk.choices[0].delta.content
-                                response_placeholder.markdown(full_response)
+                                # Update the placeholder with formatted message
+                                display_message("assistant", full_response, container=placeholder)
                     except Exception as e:
                         logger.error(f"Error streaming response: {str(e)}")
-                        # Retry streaming if it fails
                         if not full_response:
                             response = get_ai_response(api_messages, "google/gemini-2.0-flash-thinking-exp:free")
                             for chunk in response:
                                 if chunk.choices[0].delta.content:
                                     full_response += chunk.choices[0].delta.content
-                                    response_placeholder.markdown(full_response)
+                                    display_message("assistant", full_response, container=placeholder)
 
                 # Save assistant response
                 assistant_message = {
