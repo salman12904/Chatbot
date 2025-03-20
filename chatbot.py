@@ -439,7 +439,7 @@ def chat_interface():
         if st.button("🗑️ Clear All Conversations", use_container_width=True):
             clear_chat()
 
-    st.title("AI Chat Assistant")
+    st.title("Yukti's AI Chat Assistant")
     
     # Welcome message for empty chat
     if not st.session_state.messages:
