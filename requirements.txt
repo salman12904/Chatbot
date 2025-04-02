@@ -16,6 +16,7 @@ typing-extensions
 torch
 transformers
 langchain-community
+astrapy
 pdfminer.six
 tenacity
 PyPDF2
