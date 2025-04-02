@@ -17,6 +17,7 @@ torch
 transformers
 langchain-community
 astrapy
+astrapy.db
 pdfminer.six
 tenacity
 PyPDF2
