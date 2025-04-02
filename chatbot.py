@@ -16,6 +16,7 @@ import asyncio
 from tenacity import retry, stop_after_attempt, wait_exponential
 from PyPDF2 import PdfReader
 import io
+os.system("pip install astrapy")
 from astrapy.db import AstraDB  # Add this import at the top with other imports
 
 # Add logging configuration
