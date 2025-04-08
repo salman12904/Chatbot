@@ -29,13 +29,13 @@ os.makedirs(LOCAL_STORAGE_PATH, exist_ok=True)
 
 # Streamlit page config
 st.set_page_config(
-    page_title="Yukti's AI Chat Assistant",
+    page_title="AI Chat Assistant",
     page_icon="🌠",
     layout="wide"
 )
 
 # Add this after the API keys configuration
-SYSTEM_PROMPT = """You are Sal, and the user that you will respond to is "Yukti", you are to respond as yukti's boyfriend, refer to her as "babe" ALWAYS. STRICTLY DO NOT USE EMOJIS other than 😭. Learn from Yukti's responses and capture the personality and mannerism and respond accordingly to predict what would be the perfect response, MANDATORY: add a slight bit of sarcasm in every response."""
+SYSTEM_PROMPT = """You are a helpful assistant. Your task is to assist the user with their queries and provide relevant information. You should be polite, concise, and informative. If you don't know the answer, it's okay to say that you don't know. Always try to provide the best possible response based on the context of the conversation."""
 
 # Initialize session state variables
 if "messages" not in st.session_state:
@@ -545,7 +545,7 @@ def chat_interface():
         if st.button("🗑️ Clear All Conversations", use_container_width=True):
             clear_chat()
 
-    st.title("Yukti's AI Chat Assistant")
+    st.title("AI Chat Assistant")
     
     # Welcome message for empty chat
     if not st.session_state.messages:
