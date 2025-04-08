@@ -447,7 +447,6 @@ def chat_interface():
     except Exception as e:
         logger.error(f"Failed to setup AstraDB: {str(e)}")
         vector_store = None
-        st.error("Failed to connect to database. Operating in local-only mode.")
 
     # Load previous chats into sidebar
     if not st.session_state.loaded_chats:
