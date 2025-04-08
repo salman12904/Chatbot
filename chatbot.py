@@ -16,8 +16,6 @@ import asyncio
 from tenacity import retry, stop_after_attempt, wait_exponential
 from PyPDF2 import PdfReader
 import io
-os.system("pip install astrapy")
-from astrapy.db import AstraDB  # Add this import at the top with other imports
 
 # Add logging configuration
 logging.basicConfig(level=logging.INFO)
@@ -333,7 +331,7 @@ def clear_chat():
     with st.spinner("Clearing all conversations..."):
         try:
             # Clear AstraDB collection
-            astra_db = AstraDB(
+            astra_db = AstraDBVectorStore(
                 token=ASTRA_DB_TOKEN,
                 api_endpoint=f"https://43a82168-253b-4872-92bf-2827c05c6743-us-east-2.apps.astra.datastax.com"
             )
